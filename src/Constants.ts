@@ -5,6 +5,7 @@ export const OFF_ROAD_MAX_SPEED = 8000;
 export const MAX_REVERSE_SPEED = -3000;
 export const COLLISION_THRESHOLD = 0.5; // Longitudinal threshold for hitting an object
 export const PLAYER_Z_OFFSET = 640; // Visual distance from camera to car nose
+export const TOTAL_LAPS = 3;
 
 export const SPRITE_WIDTHS: Record<string, number> = {
     '/car.png': 350,

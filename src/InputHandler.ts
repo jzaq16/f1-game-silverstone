@@ -33,4 +33,8 @@ export class InputHandler {
     public get right(): boolean {
         return this.isDown('ArrowRight') || this.isDown('KeyD');
     }
+
+    public get enter(): boolean {
+        return this.isDown('Enter');
+    }
 }

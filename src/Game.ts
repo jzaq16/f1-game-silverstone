@@ -1,9 +1,10 @@
 import { InputHandler } from './InputHandler';
 import { Opponent } from './Opponent';
+import { AudioManager } from './AudioManager';
 import { Track } from './Track';
 import type { Segment } from './Track';
 import { COLORS } from './Colors';
-import { ROAD_HALFWIDTH, SPRITE_WIDTHS, RUMBLE_WIDTH_RATIO, OFF_ROAD_MAX_SPEED, COLLISION_THRESHOLD, MAX_REVERSE_SPEED, PLAYER_Z_OFFSET } from './Constants';
+import { ROAD_HALFWIDTH, SPRITE_WIDTHS, RUMBLE_WIDTH_RATIO, OFF_ROAD_MAX_SPEED, COLLISION_THRESHOLD, MAX_REVERSE_SPEED, PLAYER_Z_OFFSET, TOTAL_LAPS } from './Constants';
 
 export class Game {
     private canvas: HTMLCanvasElement;
@@ -14,14 +15,17 @@ export class Game {
 
     // Track
     private track: Track;
+    private audio: AudioManager;
     private cameraHeight: number = 800;
     private cameraDepth: number; // calculated from FOV
     private drawDistance: number = 300;
     private roadWidth: number = ROAD_HALFWIDTH; // Half-width in world units
 
     // Game State
-    private gameState: 'COUNTDOWN' | 'RACING' = 'COUNTDOWN';
+    private gameState: 'COUNTDOWN' | 'RACING' | 'FINISHED' = 'COUNTDOWN';
     private countdownTimer: number = 3.5;
+    private raceStartTime: number = 0;
+    private totalRaceTime: number = 0;
 
     // Car Sprite
     private carSprite: HTMLImageElement | null = null;
@@ -57,6 +61,7 @@ export class Game {
         this.ctx.imageSmoothingEnabled = true;
 
         this.input = new InputHandler();
+        this.audio = new AudioManager();
         this.track = new Track();
         this.track.createSilverstone();
 
@@ -236,20 +241,49 @@ export class Game {
         requestAnimationFrame(this.loop.bind(this));
     }
 
+    private reset(): void {
+        this.position = 0;
+        this.speed = 0;
+        this.playerX = 0.4;
+        this.currentLap = 1;
+        this.gameState = 'COUNTDOWN';
+        this.countdownTimer = 3.5;
+        this.raceStartTime = 0;
+        this.totalRaceTime = 0;
+        this.lapStartTime = 0;
+        this.lastLapTime = 0;
+
+        // Reset opponents
+        for (const opponent of this.opponents) {
+            opponent.position = 800; // Reset to start
+        }
+    }
+
     private update(dt: number, timestamp: number): void {
+        // Initialize audio on first user interaction (browser restriction)
+        if (this.input.throttle || this.input.brake || this.input.left || this.input.right) {
+            this.audio.init();
+        }
+
         // Handle Countdown timer regardless of state (so "GO!" can vanish)
         if (this.countdownTimer > -1) {
             this.countdownTimer -= dt;
             if (this.gameState === 'COUNTDOWN' && this.countdownTimer <= 0) {
                 this.gameState = 'RACING';
                 this.lapStartTime = timestamp;
+                this.raceStartTime = timestamp;
             }
         }
 
+        if (this.gameState === 'FINISHED') {
+            if (this.input.enter) {
+                this.reset();
+            }
+            return; // Don't move cars when finished
+        }
         if (this.gameState === 'COUNTDOWN') {
             return; // Don't move cars during countdown
         }
-
         const input = this.input;
         const currentSegment = this.findSegment(this.position);
         const speedPercent = this.speed / this.maxSpeed;
@@ -324,6 +358,7 @@ export class Game {
                 // COLLISION! STOP THE CAR IMMEDIATELY
                 this.speed = 0;
                 this.screenShake = 20; // Trigger impact shake
+                this.audio.playCollision(); // Trigger SFX
             }
         }
         // --- End Collision Detection ---
@@ -339,6 +374,13 @@ export class Game {
         // Move player along track
         this.position += this.speed * dt;
 
+        // Update Audio Engine
+        if (this.gameState === 'RACING') {
+            this.audio.setEngineRPM(Math.abs(this.speed) / this.maxSpeed);
+        } else {
+            this.audio.stopEngine();
+        }
+
         // Lap Timing
         const lastPosition = this.position - this.speed * dt;
         if (lastPosition < this.track.segmentLength * 3 && this.position >= this.track.segmentLength * 3) {
@@ -348,6 +390,14 @@ export class Game {
                 this.bestLapTime = this.lastLapTime;
             }
             this.lapStartTime = timestamp;
+
+            // Check for Race Completion
+            if (this.currentLap > TOTAL_LAPS) {
+                this.gameState = 'FINISHED';
+                this.totalRaceTime = timestamp - this.raceStartTime;
+                this.speed = 0; // Immediate stop for simplicity, or let it coast? 
+                // User said "stop the car", so let's set speed to 0.
+            }
         }
 
 
@@ -612,5 +662,40 @@ export class Game {
         if (this.screenShake > 0) {
             this.ctx.setTransform(1, 0, 0, 1, 0, 0); // Restore from shake
         }
+
+        if (this.gameState === 'FINISHED') {
+            this.renderResults();
+        }
+    }
+
+    private renderResults(): void {
+        this.ctx.save();
+
+        // Darken screen
+        this.ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+        this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+
+        this.ctx.textAlign = 'center';
+        this.ctx.fillStyle = 'white';
+        this.ctx.shadowBlur = 10;
+        this.ctx.shadowColor = 'black';
+
+        // Title
+        this.ctx.font = 'bold 80px Courier New';
+        this.ctx.fillText("RACE COMPLETE", this.canvas.width / 2, this.canvas.height / 2 - 120);
+
+        // Stats
+        this.ctx.font = '40px Courier New';
+        const formatTime = (ms: number) => (ms / 1000).toFixed(3) + 's';
+
+        this.ctx.fillText(`TOTAL TIME: ${formatTime(this.totalRaceTime)}`, this.canvas.width / 2, this.canvas.height / 2 - 20);
+        this.ctx.fillText(`BEST LAP:   ${formatTime(this.bestLapTime)}`, this.canvas.width / 2, this.canvas.height / 2 + 30);
+
+        // Prompt
+        this.ctx.fillStyle = '#ffdd00';
+        this.ctx.font = 'bold 30px Courier New';
+        this.ctx.fillText("PRESS ENTER TO RESTART", this.canvas.width / 2, this.canvas.height / 2 + 150);
+
+        this.ctx.restore();
     }
 }
