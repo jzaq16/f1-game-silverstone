@@ -28,8 +28,8 @@ export class Game {
     private totalRaceTime: number = 0;
 
     // Car Sprite
-    private sprites: Map<string, HTMLImageElement> = new Map();
-    private carAngles: string[] = ['_straight', '_left_1', '_left_2'];
+    private sprites: Map<string, HTMLCanvasElement> = new Map();
+    private carAngles: string[] = ['_straight', '_left_1', '_left_2', '_right_1', '_right_2'];
     private opponents: Opponent[] = [];
 
     // Game State
