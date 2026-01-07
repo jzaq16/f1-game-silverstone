@@ -160,14 +160,12 @@ export class Game {
                     img.onload = () => {
                         // Pre-process background (though they should have transparency, let's be sure)
                         const base = this.removeBackground(img);
-                        base.onload = () => {
-                            // Recolors for each player
-                            this.players.forEach(player => {
-                                const recolored = this.recolorSprite(base, player.color);
-                                this.carSprites.set(`p${player.id}_${car.id}`, recolored);
-                            });
-                            res();
-                        };
+                        // Recolors for each player
+                        this.players.forEach(player => {
+                            const recolored = this.recolorSprite(base, player.color);
+                            this.carSprites.set(`p${player.id}_${car.id}`, recolored);
+                        });
+                        res();
                     };
                     img.onerror = () => {
                         console.error(`Failed to load car sprite: ${car.src}`);
