@@ -213,5 +213,40 @@ export class Track {
 
         this.trackLength = this.segments.length * this.segmentLength;
     }
+
+    public get2DPath(): { x: number; y: number }[] {
+        const path: { x: number; y: number }[] = [];
+        let x = 0;
+        let z = 0;
+        let yaw = 0; // heading in radians
+
+        // The track segments form a loop, but simple integration of curves
+        // might not perfectly close the loop due to floating point or design.
+        // We'll calculate the raw path first.
+        for (const segment of this.segments) {
+            path.push({ x, y: z });
+
+            // Curve is essentially 'yaw change' per segment.
+            // In our 3D engine, curve is relative to the segment length.
+            yaw += (segment.curve * 0.015);
+
+            x += Math.sin(yaw) * this.segmentLength;
+            z += Math.cos(yaw) * this.segmentLength;
+        }
+
+        // To ensure it visualizes as a loop, we can slightly "adjust" the path
+        // so the end meets the start. Since this is for a minimap, a simple
+        // linear closure adjustment is often enough.
+        const endX = x;
+        const endZ = z;
+
+        for (let i = 0; i < path.length; i++) {
+            const percent = i / path.length;
+            path[i].x -= endX * percent;
+            path[i].y -= endZ * percent;
+        }
+
+        return path;
+    }
 }
 

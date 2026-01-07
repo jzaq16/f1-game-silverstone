@@ -1,4 +1,5 @@
 export const ROAD_HALFWIDTH = 1000;
+export const CAR_WORLD_WIDTH = 350;
 export const RUMBLE_WIDTH_RATIO = 0.2;
 export const BUILDING_SAFETY_MARGIN = 0.2;
 export const OFF_ROAD_MAX_SPEED = 8000;
