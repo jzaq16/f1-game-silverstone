@@ -123,11 +123,8 @@ export class Game {
                 treeSprite.src = '/tree.png';
                 treeSprite.onload = () => {
                     const processedTree = this.removeBackground(treeSprite);
-                    processedTree.onload = () => {
-                        this.sprites.set('/tree.png', processedTree);
-                        console.log("Tree sprite loaded and processed");
-                        resolveInner();
-                    };
+                    this.sprites.set('/tree.png', processedTree);
+                    resolveInner();
                 };
             });
             promises.push(treePromise);
@@ -140,10 +137,8 @@ export class Game {
                     img.src = src;
                     img.onload = () => {
                         const processed = this.removeBackground(img);
-                        processed.onload = () => {
-                            this.sprites.get(src) || this.sprites.set(src, processed);
-                            res();
-                        };
+                        this.sprites.set(src, processed);
+                        res();
                     };
                 });
                 promises.push(p);
@@ -230,12 +225,12 @@ export class Game {
         return canvas;
     }
 
-    private removeBackground(img: HTMLImageElement): HTMLImageElement {
+    private removeBackground(img: HTMLImageElement): HTMLCanvasElement {
         const canvas = document.createElement('canvas');
         canvas.width = img.width;
         canvas.height = img.height;
         const ctx = canvas.getContext('2d');
-        if (!ctx) return img;
+        if (!ctx) return canvas;
 
         ctx.drawImage(img, 0, 0);
         const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
@@ -250,7 +245,6 @@ export class Game {
             const b = data[i + 2];
 
             // Fuzzy Magenta detection (#FF00FF)
-            // Magenta has high R and B, low G.
             const isMagenta = r > 150 && b > 150 && g < 100;
             // Also handle the white/grayish highlights from AI generation
             const isBrightOrWhite = r > 230 && g > 230 && b > 230;
@@ -269,7 +263,7 @@ export class Game {
             }
         }
 
-        if (!foundContent) return img;
+        if (!foundContent) return canvas;
 
         // Create a cropped canvas
         const cropW = maxX - minX + 1;
@@ -278,28 +272,24 @@ export class Game {
         croppedCanvas.width = cropW;
         croppedCanvas.height = cropH;
         const croppedCtx = croppedCanvas.getContext('2d');
-        if (!croppedCtx) return img;
-
-        // Put the processed (transparent) data back and then draw cropped
-        ctx.putImageData(imageData, 0, 0);
+        if (!croppedCtx) return canvas;
 
         // Apply a "Soft Base" blending effect to landmarks to ground them in the terrain
-        // We'll feather the bottom few pixels with decreasing alpha
         const featherHeight = 15;
         for (let y = maxY - featherHeight; y <= maxY; y++) {
+            if (y < 0 || y >= canvas.height) continue;
             const alpha = ((maxY - y) / featherHeight); // 1.0 at top of feather, 0.0 at very bottom
             for (let x = minX; x <= maxX; x++) {
+                if (x < 0 || x >= canvas.width) continue;
                 const pixelIdx = (y * canvas.width + x) * 4;
                 data[pixelIdx + 3] *= alpha;
             }
         }
-        ctx.putImageData(imageData, 0, 0);
 
+        ctx.putImageData(imageData, 0, 0);
         croppedCtx.drawImage(canvas, minX, minY, cropW, cropH, 0, 0, cropW, cropH);
 
-        const newImg = new Image();
-        newImg.src = croppedCanvas.toDataURL();
-        return newImg;
+        return croppedCanvas;
     }
 
     public async start(): Promise<void> {
