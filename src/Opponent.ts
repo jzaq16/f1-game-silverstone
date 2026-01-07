@@ -59,9 +59,8 @@ export class Opponent {
         const totalScore = perspectiveScore + curveScore + steeringScore;
 
         // Symmetric logic: 
-        // Our base sprites (_left_1, _left_2) are angled LEFT (pointing left/seeing right bodywork).
-        // Positive totalScore means we WANT the car angled left.
-
+        // positive totalScore = car should be angled LEFT
+        // negative totalScore = car should be angled RIGHT
         const isAngledLeft = totalScore > 0;
         const absScore = Math.abs(totalScore);
 
@@ -69,8 +68,10 @@ export class Opponent {
         if (absScore > 3.0) frame = isAngledLeft ? '_left_2' : '_right_2';
         else if (absScore > 1.2) frame = isAngledLeft ? '_left_1' : '_right_1';
 
-        // We only mirror if we ARE using a left sprite for a right turn
-        const needsMirror = !isAngledLeft && frame.includes('_left');
+        // We only mirror if we are using a LEFT sprite for a RIGHT turn
+        // OR if we are using a RIGHT sprite for a LEFT turn
+        const needsMirror = (isAngledLeft && frame.includes('_right')) || (!isAngledLeft && frame.includes('_left'));
+
         return { frame, mirror: needsMirror };
     }
 }

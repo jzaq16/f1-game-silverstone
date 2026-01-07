@@ -652,22 +652,17 @@ export class Game {
 
         if (total_tilt < -1.5) {
             playerFrame = '_left_2';
-            mirrorPlayer = false;
         } else if (total_tilt < -0.8) {
             playerFrame = '_left_1';
-            mirrorPlayer = false;
         } else if (total_tilt > 1.5) {
             playerFrame = this.sprites.has('/car_right_2.png') ? '_right_2' : '_left_2';
-            mirrorPlayer = !this.sprites.has('/car_right_2.png');
         } else if (total_tilt > 0.8) {
             playerFrame = this.sprites.has('/car_right_1.png') ? '_right_1' : '_left_1';
-            mirrorPlayer = !this.sprites.has('/car_right_1.png');
         }
 
-        // If the user says it's backwards, it might be that the _left sprites look like right turns?
-        // Or the signs are flipped. Let's try inverting the mirrorPlayer logic based on user feedback.
-        // Actually, let's keep it consistent and ask for a screenshot if it persists.
-        // BUT wait, if the user says "backwards", I should probably flip the true/false for mirroring.
+        // Mirroring Logic:
+        // We mirror ONLY if we are using a LEFT sprite for a RIGHT turn (total_tilt > 0)
+        // OR if we are using a RIGHT sprite for a LEFT turn (total_tilt < 0)
         if (playerFrame.includes('_left')) {
             mirrorPlayer = total_tilt > 0;
         } else if (playerFrame.includes('_right')) {
@@ -676,7 +671,7 @@ export class Game {
 
         const playerSprite = this.sprites.get(`/car${playerFrame}.png`);
 
-        if (playerSprite && playerSprite.complete) {
+        if (playerSprite) {
             const carW = 160; // Reduced from 200 to fit lane better
             const carH = carW * (playerSprite.height / playerSprite.width);
             const carX = (this.canvas.width / 2) - (carW / 2);
