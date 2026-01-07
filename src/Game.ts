@@ -28,8 +28,8 @@ export class Game {
     private totalRaceTime: number = 0;
 
     // Car Sprite
-    private carSprite: HTMLImageElement | null = null;
     private sprites: Map<string, HTMLImageElement> = new Map();
+    private carAngles: string[] = ['_straight', '_left_1', '_left_2'];
     private opponents: Opponent[] = [];
 
     // Game State
@@ -65,13 +65,16 @@ export class Game {
         this.track = new Track();
         this.track.createSilverstone();
 
-        // Single rival placed strictly on the asphalt (Left Lane)
+        // Start cars side-by-side: Opponent at visual line, Player at visual line
+        this.playerX = 0.45; // Slightly offset from center for better lane fit
+
+        // Single rival placed strictly on the asphalt (Left Lane center)
         this.opponents.push(new Opponent(
-            800,                  // Immediate side-by-side
+            PLAYER_Z_OFFSET,      // Side-by-side at the start
             12000,                // Speed
-            -0.4,                 // Left lane alignment
-            '/car.png',
-            -0.4                  // Maintain left lane
+            -0.45,                // Left lane offset
+            '/car.png',           // Base path
+            -0.45                 // Target lane
         ));
 
         // Hardcoded depth for consistent scaling (roughly 1.0 for FOV 100 on standard canvas)
@@ -82,21 +85,22 @@ export class Game {
         return new Promise((resolve) => {
             const promises: Promise<void>[] = [];
 
-            // Load car sprite
-            const carPromise = new Promise<void>((resolveInner) => {
-                const carImg = new Image();
-                carImg.src = '/car.png';
-                carImg.onload = () => {
-                    const processedCar = this.removeBackground(carImg);
-                    processedCar.onload = () => {
-                        this.carSprite = processedCar;
-                        this.sprites.set('/car.png', processedCar);
-                        console.log("Car sprite loaded and processed");
-                        resolveInner();
+            // Load car sprites (Symmetric Mirrored System)
+            this.carAngles.forEach(angle => {
+                const src = `/car${angle}.png`;
+                const p = new Promise<void>((resolveInner) => {
+                    const img = new Image();
+                    img.src = src;
+                    img.onload = () => {
+                        const processed = this.removeBackground(img);
+                        processed.onload = () => {
+                            this.sprites.set(src, processed);
+                            resolveInner();
+                        };
                     };
-                };
+                });
+                promises.push(p);
             });
-            promises.push(carPromise);
 
             // Load tree sprite
             const treePromise = new Promise<void>((resolveInner) => {
@@ -157,10 +161,13 @@ export class Game {
             const g = data[i + 1];
             const b = data[i + 2];
 
-            const isGreen = g > 150 && r < 100 && b < 100;
-            const isWhite = r > 230 && g > 230 && b > 230;
+            // Fuzzy Magenta detection (#FF00FF)
+            // Magenta has high R and B, low G.
+            const isMagenta = r > 150 && b > 150 && g < 100;
+            // Also handle the white/grayish highlights from AI generation
+            const isBrightOrWhite = r > 230 && g > 230 && b > 230;
 
-            if (isGreen || isWhite) {
+            if (isMagenta || isBrightOrWhite) {
                 data[i + 3] = 0;
             } else if (data[i + 3] > 0) {
                 // Track bounding box of actual content
@@ -255,7 +262,8 @@ export class Game {
 
         // Reset opponents
         for (const opponent of this.opponents) {
-            opponent.position = 800; // Reset to start
+            opponent.position = PLAYER_Z_OFFSET; // Reset to start line
+            opponent.playerX = -0.45;
         }
     }
 
@@ -263,6 +271,13 @@ export class Game {
         // Initialize audio on first user interaction (browser restriction)
         if (this.input.throttle || this.input.brake || this.input.left || this.input.right) {
             this.audio.init();
+        }
+
+        // Update Audio Engine
+        if (this.gameState === 'RACING') {
+            this.audio.setEngineRPM(Math.abs(this.speed) / this.maxSpeed);
+        } else {
+            this.audio.stopEngine();
         }
 
         // Handle Countdown timer regardless of state (so "GO!" can vanish)
@@ -374,12 +389,6 @@ export class Game {
         // Move player along track
         this.position += this.speed * dt;
 
-        // Update Audio Engine
-        if (this.gameState === 'RACING') {
-            this.audio.setEngineRPM(Math.abs(this.speed) / this.maxSpeed);
-        } else {
-            this.audio.stopEngine();
-        }
 
         // Lap Timing
         const lastPosition = this.position - this.speed * dt;
@@ -546,7 +555,9 @@ export class Game {
             for (const opponent of this.opponents) {
                 const opponentSegment = this.findSegment(opponent.position);
                 if (opponentSegment.index === segment.index) {
-                    allSegmentSprites.push({ source: opponent.sprite, offset: opponent.playerX, mirror: false });
+                    const info = opponent.getSpriteFrame(this.playerX, segment.curve);
+                    const spritePath = `/car${info.frame}.png`;
+                    allSegmentSprites.push({ source: spritePath, offset: opponent.playerX, mirror: info.mirror });
                 }
             }
 
@@ -632,21 +643,62 @@ export class Game {
         }
 
         // Draw Car (Realistic Sprite)
-        if (this.carSprite && this.carSprite.complete) {
-            const carW = 200;
-            const carH = carW * (this.carSprite.height / this.carSprite.width);
+        const steering_input = (this.input.left ? -1 : (this.input.right ? 1 : 0));
+        const curve_tilt = baseSegment.curve * 0.2;
+        const total_tilt = steering_input + curve_tilt;
+
+        let playerFrame = '_straight';
+        let mirrorPlayer = false;
+
+        if (total_tilt < -1.5) {
+            playerFrame = '_left_2';
+            mirrorPlayer = false;
+        } else if (total_tilt < -0.8) {
+            playerFrame = '_left_1';
+            mirrorPlayer = false;
+        } else if (total_tilt > 1.5) {
+            playerFrame = this.sprites.has('/car_right_2.png') ? '_right_2' : '_left_2';
+            mirrorPlayer = !this.sprites.has('/car_right_2.png');
+        } else if (total_tilt > 0.8) {
+            playerFrame = this.sprites.has('/car_right_1.png') ? '_right_1' : '_left_1';
+            mirrorPlayer = !this.sprites.has('/car_right_1.png');
+        }
+
+        // If the user says it's backwards, it might be that the _left sprites look like right turns?
+        // Or the signs are flipped. Let's try inverting the mirrorPlayer logic based on user feedback.
+        // Actually, let's keep it consistent and ask for a screenshot if it persists.
+        // BUT wait, if the user says "backwards", I should probably flip the true/false for mirroring.
+        if (playerFrame.includes('_left')) {
+            mirrorPlayer = total_tilt > 0;
+        } else if (playerFrame.includes('_right')) {
+            mirrorPlayer = total_tilt < 0;
+        }
+
+        const playerSprite = this.sprites.get(`/car${playerFrame}.png`);
+
+        if (playerSprite && playerSprite.complete) {
+            const carW = 160; // Reduced from 200 to fit lane better
+            const carH = carW * (playerSprite.height / playerSprite.width);
             const carX = (this.canvas.width / 2) - (carW / 2);
             const carY = this.canvas.height - carH - 20;
 
-            // Slight steering tilt based on current input
-            const steering_input = (this.input.left ? -1 : (this.input.right ? 1 : 0));
-            const tilt = steering_input * 0.05;
+            // Subtle rotation for extra "lean"
+            const rotation = total_tilt * 0.05;
+
             this.ctx.save();
             this.ctx.translate(carX + carW / 2, carY + carH / 2);
-            this.ctx.rotate(tilt);
+
+            if (mirrorPlayer) {
+                this.ctx.scale(-1, 1);
+            }
+            this.ctx.rotate(rotation * (mirrorPlayer ? -1 : 1));
+
             // Draw "YOU" indicator during countdown only
             if (this.gameState === 'COUNTDOWN') {
                 this.ctx.save();
+                // If mirroring the car, we must UN-mirror the coordinate system for text
+                // OR we just use a separate translate since we're already centered.
+                this.ctx.scale(mirrorPlayer ? -1 : 1, 1);
                 this.ctx.textAlign = 'center';
                 this.ctx.font = 'bold 30px Courier New';
                 this.ctx.fillStyle = '#ffdd00'; // Brighter gold
@@ -655,7 +707,7 @@ export class Game {
                 this.ctx.restore();
             }
 
-            this.ctx.drawImage(this.carSprite, -carW / 2, -carH / 2 + Math.sin(this.position / 50) * 2, carW, carH);
+            this.ctx.drawImage(playerSprite, -carW / 2, -carH / 2 + Math.sin(this.position / 50) * 2, carW, carH);
             this.ctx.restore();
         }
 

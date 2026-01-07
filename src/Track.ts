@@ -187,7 +187,7 @@ export class Track {
         this.addStraight(25);
 
         // 15. Stowe (Fast Right)
-        this.addRoad(15, 20, 15, 2.5, -20); // Dips into Stowe
+        this.addRoad(15, 20, 15, 2.5, -30); // Dips into Stowe
         this.addSideObject(this.segments.length - 20, '/grandstand.png', 1, 0.1);
 
         // 16. Vale (Straight into chicane)
