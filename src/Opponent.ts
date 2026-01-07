@@ -51,10 +51,10 @@ export class Opponent {
      */
     public getSpriteFrame(playerX: number, curve: number): { frame: string, mirror: boolean } {
         const relativeX = (this.playerX - playerX);
-        const perspectiveScore = -relativeX * 1.5;
-        const curveScore = -curve * 0.5; // Left curve (-) -> Positive score -> Angled Left
+        const perspectiveScore = relativeX * 1.5;
+        const curveScore = curve * 0.5;
         const steering = (this.targetX - this.playerX);
-        const steeringScore = -steering * 2.0; // Steering left (-) -> Positive score -> Angled Left
+        const steeringScore = steering * 2.0;
 
         const totalScore = perspectiveScore + curveScore + steeringScore;
 
